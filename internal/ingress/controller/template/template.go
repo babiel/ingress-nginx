@@ -64,7 +64,7 @@ type TemplateWriter interface {
 type Template struct {
 	tmpl *text_template.Template
 	//fw   watch.FileWatcher
-	bp *BufferPool
+	s    int
 }
 
 //NewTemplate returns a new Template instance or an
@@ -82,18 +82,22 @@ func NewTemplate(file string) (*Template, error) {
 
 	return &Template{
 		tmpl: tmpl,
-		bp:   NewBufferPool(defBufferSize),
+		s:    defBufferSize,
 	}, nil
 }
 
 // Write populates a buffer using a template with NGINX configuration
 // and the servers and upstreams created by Ingress rules
 func (t *Template) Write(conf config.TemplateConfig) ([]byte, error) {
-	tmplBuf := t.bp.Get()
-	defer t.bp.Put(tmplBuf)
+	tmplBuf := bytes.NewBuffer(make([]byte, 0, t.s))
+	outCmdBuf := bytes.NewBuffer(make([]byte, 0, t.s))
 
-	outCmdBuf := t.bp.Get()
-	defer t.bp.Put(outCmdBuf)
+	defer func() {
+		if t.s < tmplBuf.Cap() {
+			klog.V(2).Infof("adjusting template buffer size from %v to %v", t.s, tmplBuf.Cap())
+			t.s = tmplBuf.Cap()
+		}
+	}()
 
 	if klog.V(3).Enabled() {
 		b, err := json.Marshal(conf)
